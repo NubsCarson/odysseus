@@ -1,0 +1,47 @@
+name: possible-duplicate
+
+# Flags open PRs that touch the same files as another open PR, so duplicate
+# work is visible before it eats review time. See scripts/possible_duplicate.py.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+# pull_request_target (not pull_request) is required so the job has write
+# access to comment/label on PRs that come from forks. This job NEVER checks
+# out or executes PR-head code — it only reads the base repo's script and makes
+# GitHub API calls — so the usual pull_request_target code-execution risk does
+# not apply.
+permissions:
+  pull-requests: write
+  contents: read
+
+concurrency:
+  group: possible-duplicate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  flag:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out base repo (trusted scripts only)
+        uses: actions/checkout@v4
+        # On pull_request_target this checks out the BASE branch, not the PR
+        # head, so the script we run is the trusted in-repo version.
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Flag possible duplicates
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Tunables (optional):
+          # MAX_PRS: '150'
+          # MIN_SHARED: '2'
+          # MIN_JACCARD: '0.30'
+        run: python scripts/possible_duplicate.py
